@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>galaXXy brain 三次方程式</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      text-align: center;
+      padding: 40px;
+      margin: 0;
+    }
+
+    #container {
+      display: flex;
+      justify-content: center;
+      align-items: flex-start;
+      gap: 50px;
+    }
+
+    #main {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+    }
+
+    #question {
+      width: 480px;
+      height: 100px;
+      font-size: 28px;
+      border: 2px solid black;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 30px;
+      box-sizing: border-box;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(7, 80px);
+      grid-auto-rows: 80px;
+      gap: 0;
+      width: 480px;
+    }
+
+    .button {
+      border: 2px solid black;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .button.selected {
+      background-color: #aaf;
+    }
+
+    .button.empty {
+      border: none;
+      cursor: default;
+    }
+
+    .button.wide {
+      grid-column: span 2;
+    }
+
+    #side-panel {
+      border: 2px solid black;
+      padding: 10px;
+      width: 200px;
+      font-size: 16px;
+      text-align: left;
+    }
+
+    #side-panel div {
+      margin: 10px 0;
+    }
+
+    /* ▼▼▼ スマホ用の画面仕様 ▼▼▼ */
+    @media (max-width: 768px) {
+      body {
+        padding: 20px;
+      }
+
+      #main {
+        align-items: center;
+        width: 100%;
+      }
+
+      #question {
+        width: 405px;
+        font-size: 22px;
+        height: 80px;
+        margin-bottom: 0; /* ← 下余白を消す */
+        position: fixed;   /* ← 固定配置 */
+        top: 40%;          /* ← 画面の中央に */
+        left: 50%;         /* ← 横も中央に */
+        transform: translate(-50%, -50%); /* ← 完全に中央寄せ */
+        z-index: 100;      /* ← ボタンより上に表示 */
+        background: #fff;  /* ← 背景を白にして下の要素と重ならないように */
+        border: 2px solid black;
+        box-sizing: border-box;
+      }
+
+      .grid {
+        position: fixed;
+        bottom: 30px;         /* ← 10px 上に上げる */
+        left: 50%;            /* ← 画面中央基準 */
+        transform: translateX(-43%); /* ← 横中央寄せ */
+        background-color: #fff;
+        padding: 5px 10px;
+        
+        box-sizing: border-box;
+        z-index: 100;
+
+        width: 480px;
+        max-width: 480px;     /* ← 横幅を制限して中央に配置 */
+        grid-template-columns: repeat(7, 1fr);
+        grid-auto-rows: 50px;
+      }
+
+      .button {
+        font-size: 16px;
+        border-width: 1px;
+      }
+
+      .button.wide {
+        grid-column: span 2;
+      }
+
+      /* 前の問題情報を右上に控えめに配置 */
+      #side-panel {
+        position: absolute;
+        top: 5px;
+        right: 5px;
+        width: auto;
+        max-width: 45%;
+        font-size: 12px;
+        padding: 5px 8px;
+        border: 1px solid #ccc;
+        background: rgba(255,255,255,0.9);
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+      }
+
+      #side-panel div {
+        margin: 2px 0;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <div id="container">
+    <div id="main">
+      <div id="question">問題</div>
+      <div class="grid" id="number-grid"></div>
+    </div>
+
+    <div id="side-panel">
+      <div>前の問題: <br><span id="prev-question">---</span></div>
+      <div>前の問題の解答: <br><span id="prev-answer">---</span></div>
+      <div>前の問題の解答時間: <br><span id="prev-time">---</span> 秒</div>
+    </div>
+  </div>
+
+  <script>
+    // JavaScript
+    const numberGrid = document.getElementById("number-grid");
+    const questionBox = document.getElementById("question");
+    const prevQ = document.getElementById("prev-question");
+    const prevA = document.getElementById("prev-answer");
+    const prevT = document.getElementById("prev-time");
+
+    let currentRoots = [];
+    let selectedNumbers = [];
+    let questionText = "";
+    let startTime;
+
+    const createButtons = () => {
+      const layout = [
+        -7, -8, -9, 7, 8, 9, '',
+        -4, -5, -6, 4, 5, 6, '',
+        -1, -2, -3, 1, 2, 3, '',
+        '', -10, '決定', '10', '', ''
+      ];
+
+      layout.forEach((val, index) => {
+        const btn = document.createElement("div");
+
+        if (val === '') {
+          btn.className = "button empty";
+        } else if (val === '決定') {
+          btn.className = "button wide";
+          btn.textContent = val;
+          btn.onclick = () => handleClick(val);
+        } else {
+          btn.className = "button";
+          btn.textContent = val;
+          btn.onclick = () => handleClick(val);
+        }
+
+        numberGrid.appendChild(btn);
+      });
+    };
+
+    const intToSignedStr = n => n >= 0 ? `+ ${n}` : `- ${-n}`;
+
+    const generateQuestion = () => {
+      const range = [];
+      for (let i = -10; i <= 10; i++) {
+        if (i !== 0) range.push(i);
+      }
+      currentRoots = [];
+      while (currentRoots.length < 3) {
+        const r = range[Math.floor(Math.random() * range.length)];
+        if (!currentRoots.includes(r)) currentRoots.push(r);
+      }
+
+      const [a, b, c] = currentRoots;
+      const sc = -(a + b + c);
+      const lc = a * b + b * c + a * c;
+      const cons = -a * b * c;
+
+      questionText = `x³ ${intToSignedStr(sc)}x² ${intToSignedStr(lc)}x ${intToSignedStr(cons)} = 0`;
+      questionBox.textContent = questionText;
+      selectedNumbers = [];
+      startTime = new Date();
+      updateButtonStyles();
+    };
+
+    const handleClick = val => {
+      if (val === '決定') {
+        if (selectedNumbers.length !== 3) {
+          alert("3つの値を選んでください。");
+          return;
+        }
+
+        const endTime = new Date();
+        const elapsed = ((endTime - startTime) / 1000).toFixed(2);
+
+        const userAns = [...selectedNumbers].sort((a, b) => a - b);
+        const correctAns = [...currentRoots].sort((a, b) => a - b);
+        const isCorrect = JSON.stringify(userAns) === JSON.stringify(correctAns);
+
+        alert(isCorrect ? `正解！ 解答時間: ${elapsed} 秒` : `不正解！ 正解: ${correctAns.join(" ")}`);
+
+        prevQ.textContent = questionText;
+        prevA.textContent = correctAns.join(" ");
+        prevT.textContent = elapsed;
+
+        generateQuestion();
+      } else {
+        const num = parseInt(val);
+        if (selectedNumbers.includes(num)) {
+          selectedNumbers = selectedNumbers.filter(n => n !== num);
+        } else {
+          if (selectedNumbers.length < 3) {
+            selectedNumbers.push(num);
+          }
+        }
+        updateButtonStyles();
+      }
+    };
+
+    const updateButtonStyles = () => {
+      const buttons = numberGrid.children;
+      for (let btn of buttons) {
+        const val = btn.textContent;
+        if (!isNaN(val)) {
+          const intVal = parseInt(val);
+          btn.classList.toggle("selected", selectedNumbers.includes(intVal));
+        }
+      }
+    };
+
+    createButtons();
+    generateQuestion();
+  </script>
+
+</body>
+</html>
